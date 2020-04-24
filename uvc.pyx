@@ -291,6 +291,36 @@ cdef class Frame:
         self.yuv_subsampling = jpegSubsamp
         self._yuv_converted = True
 
+    cdef flip(self):
+        cdef int result
+        cdef uvc.uvc_frame* buffer_frame
+        cdef turbojpeg.tjtransform[1] transforms
+        cdef unsigned long[1] buffer_sizes
+
+        transforms[0].r.x = 0
+        transforms[0].r.y = 0
+        transforms[0].r.w = self.width
+        transforms[0].r.h = self.height
+
+        transforms[0].op = turbojpeg.TJXOP_HFLIP
+        transforms[0].options = 0
+        transforms[0].data = NULL
+        transforms[0].customFilter = NULL
+
+        # create image
+        buffer_frame = uvc.uvc_allocate_frame(self._uvc_frame.data_bytes)
+        buffer_sizes[0] = self._uvc_frame.data_bytes
+
+        #uvc.uvc_duplicate_frame(self._uvc_frame, cpy_frame)
+        result = turbojpeg.tjTransform(self.tj_context, <unsigned char*>self._uvc_frame.data,
+                                        self._uvc_frame.data_bytes, 1, <unsigned char**>&buffer_frame.data, buffer_sizes, transforms, 0)
+
+        print(result);
+
+        uvc.uvc_free_frame(self._uvc_frame)
+        # now change the pointers
+        self._uvc_frame = buffer_frame
+
     def clear_caches(self):
         self._bgr_converted = False
         self._yuv_converted = False
