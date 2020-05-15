@@ -99,6 +99,7 @@ cdef class Frame:
     '''
 
     cdef turbojpeg.tjhandle tj_context
+
     cdef uvc.uvc_frame * _uvc_frame
     cdef unsigned char[:] _bgr_buffer, _gray_buffer,_yuv_buffer #we use numpy for memory management.
     cdef bint _yuv_converted, _bgr_converted
@@ -150,6 +151,7 @@ cdef class Frame:
                 self.jpeg2yuv()
             cdef np.uint8_t[::1] view = <np.uint8_t[:self._yuv_buffer.shape[0]]>&self._yuv_buffer[0]
             return view
+
 
     property yuv420:
         def __get__(self):
@@ -246,7 +248,6 @@ cdef class Frame:
             BGR = np.asarray(self._bgr_buffer).reshape(self.height,self.width,3)
             return BGR
 
-
     #for legacy reasons.
     property img:
         def __get__(self):
@@ -289,37 +290,40 @@ cdef class Frame:
         if result == -1:
             logger.warning('Turbojpeg jpeg2yuv: %s'%turbojpeg.tjGetErrorStr() )
         self.yuv_subsampling = jpegSubsamp
+        self.flip()
         self._yuv_converted = True
 
     cdef flip(self):
-        cdef int result
-        cdef uvc.uvc_frame* buffer_frame
-        cdef turbojpeg.tjtransform[1] transforms
-        cdef unsigned long[1] buffer_sizes
+        cdef int size = self.width * self.height
+        cdef int half_length = self.width * self.height // 2
+        cdef offset = 0
+        
+        #Y = np.asarray(self._yuv_buffer[:size], dtype=np.uint8).reshape(self.height, self.width)
+        #Y = Y[::-1, :]
+        #Y = Y.reshape((size,))
+        #print(Y.shape)
+        #print(size)
+        #U = U[::-1, ::-1]
+        #V = V[::-1, ::-1]
 
-        transforms[0].r.x = 0
-        transforms[0].r.y = 0
-        transforms[0].r.w = self.width
-        transforms[0].r.h = self.height
+        #self._yuv_buffer[:size] = 0
 
-        transforms[0].op = turbojpeg.TJXOP_HFLIP
-        transforms[0].options = 0
-        transforms[0].data = NULL
-        transforms[0].customFilter = NULL
+        self._yuv_buffer[:size] = self._yuv_buffer[:size][::-1]
+        offset += size
+        self._yuv_buffer[offset:offset+half_length] = self._yuv_buffer[offset:offset+half_length][::-1]
+        offset += half_length
+        self._yuv_buffer[offset:offset+half_length] = self._yuv_buffer[offset:offset+half_length][::-1]
 
-        # create image
-        buffer_frame = uvc.uvc_allocate_frame(self._uvc_frame.data_bytes)
-        buffer_sizes[0] = self._uvc_frame.data_bytes
 
-        #uvc.uvc_duplicate_frame(self._uvc_frame, cpy_frame)
-        result = turbojpeg.tjTransform(self.tj_context, <unsigned char*>self._uvc_frame.data,
-                                        self._uvc_frame.data_bytes, 1, <unsigned char**>&buffer_frame.data, buffer_sizes, transforms, 0)
 
-        print(result);
 
-        uvc.uvc_free_frame(self._uvc_frame)
-        # now change the pointers
-        self._uvc_frame = buffer_frame
+        #print("Length: {}".format(len(self._yuv_buffer)))
+        #self._yuv_buffer[:size] = self._yuv_buffer[:size][::-1]
+        #offset += size
+        #self._yuv_buffer[offset:half_length] = self._yuv_buffer[offset:half_length][::-1]
+        #offset += half_length
+        #self._yuv_buffer[offset:half_length] = self._yuv_buffer[offset:half_length][::-1]
+        
 
     def clear_caches(self):
         self._bgr_converted = False
@@ -447,7 +451,6 @@ cdef class Capture:
     """
 
     cdef turbojpeg.tjhandle tj_context
-
     cdef uvc.uvc_context_t *ctx
     cdef uvc.uvc_device_t *dev
     cdef uvc.uvc_device_handle_t *devh
